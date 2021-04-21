@@ -1,0 +1,180 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Task and Service Definition
+
+Parameters:
+  ECSCluster:
+    Type: String
+  DesiredCount:
+    Type: Number
+    Default: 1
+  ContainerCpu:
+    Type: Number
+    Default: 1024
+  ContainerMemory:
+    Type: Number
+    Default: 2048
+  ClusterRoleArn:
+    Type: String
+  TargetGroupArn:
+    Type: String
+  EFSId:
+    Type: String
+    Description: The Amazon EFS file system ID to use
+  Subnets:
+    Type: List<AWS::EC2::Subnet::Id>
+  SecurityGroup:
+    Description: Security group
+    Type: AWS::EC2::SecurityGroup::Id
+  ContainerRegistry:
+    Description: Container Registry Name
+    Type: String
+  LogGroupName:
+    Description: Log Group Name
+    Type: String
+  DBSecrets:
+    Description: AWS Secret Manager Arn for database credentials
+    Type: String
+    AllowedPattern: "^$|(arn:aws:secretsmanager:)([a-zA-Z0-9/:-])*([a-zA-Z0-9])$"
+
+Resources:
+  MattermostTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Cpu: !Ref ContainerCpu
+      Memory: !Ref ContainerMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - "FARGATE"
+      ExecutionRoleArn: !Ref ClusterRoleArn
+      TaskRoleArn: !Ref ClusterRoleArn
+      ContainerDefinitions:
+        - Name: "mattermost-server"
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ContainerRegistry}:latest"
+          Essential: true
+          Environment:
+            - Name: MM_USERNAME
+              Value:
+                !Join [
+                  "",
+                  [
+                    "{{resolve:secretsmanager:",
+                    !Ref DBSecrets,
+                    ":SecretString:username}}",
+                  ],
+                ]
+            - Name: MM_PASSWORD
+              Value:
+                !Join [
+                  "",
+                  [
+                    "{{resolve:secretsmanager:",
+                    !Ref DBSecrets,
+                    ":SecretString:password}}",
+                  ],
+                ]
+            - Name: MM_DBNAME
+              Value:
+                !Join [
+                  "",
+                  [
+                    "{{resolve:secretsmanager:",
+                    !Ref DBSecrets,
+                    ":SecretString:dbname}}",
+                  ],
+                ]
+            - Name: DB_HOST
+              Value:
+                !Join [
+                  "",
+                  [
+                    "{{resolve:secretsmanager:",
+                    !Ref DBSecrets,
+                    ":SecretString:host}}",
+                  ],
+                ]
+            - Name: DB_PORT_NUMBER
+              Value:
+                !Join [
+                  "",
+                  [
+                    "{{resolve:secretsmanager:",
+                    !Ref DBSecrets,
+                    ":SecretString:port}}",
+                  ],
+                ]
+          MountPoints:
+            - ContainerPath: /mattermost/config
+              ReadOnly: false
+              SourceVolume: mattermost-config
+            - ContainerPath: /mattermost/data
+              ReadOnly: false
+              SourceVolume: mattermost-data
+            - ContainerPath: /mattermost/logs
+              ReadOnly: false
+              SourceVolume: mattermost-logs
+            - ContainerPath: /mattermost/plugins
+              ReadOnly: false
+              SourceVolume: mattermost-plugins
+            - ContainerPath: /mattermost/client/plugins
+              ReadOnly: false
+              SourceVolume: mattermost-client-plugins
+          PortMappings:
+            - ContainerPort: 8000
+              HostPort: 8000
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: "awslogs"
+            Options:
+              awslogs-region: !Sub ${AWS::Region}
+              awslogs-group: !Ref LogGroupName
+              awslogs-stream-prefix: "mattermost-server"
+      Volumes:
+        - EFSVolumeConfiguration:
+            FilesystemId: !Ref EFSId
+            RootDirectory: config
+          Name: mattermost-config
+        - EFSVolumeConfiguration:
+            FilesystemId: !Ref EFSId
+            RootDirectory: data
+          Name: mattermost-data
+        - EFSVolumeConfiguration:
+            FilesystemId: !Ref EFSId
+            RootDirectory: logs
+          Name: mattermost-logs
+        - EFSVolumeConfiguration:
+            FilesystemId: !Ref EFSId
+            RootDirectory: plugins
+          Name: mattermost-plugins
+        - EFSVolumeConfiguration:
+            FilesystemId: !Ref EFSId
+            RootDirectory: client-plugins
+          Name: mattermost-client-plugins
+
+  MattermostServiceDefinition:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ECSCluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: !Ref "DesiredCount"
+      TaskDefinition: !Ref "MattermostTaskDefinition"
+      PlatformVersion: "1.4.0"
+      LoadBalancers:
+        - ContainerName: "mattermost-server"
+          ContainerPort: 8000
+          TargetGroupArn: !Ref TargetGroupArn
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref SecurityGroup
+          Subnets:
+            - !Select [0, !Ref Subnets]
+            - !Select [1, !Ref Subnets]
+
+Outputs:
+  ServiceName:
+    Description: Service name
+    Value: !Ref MattermostServiceDefinition

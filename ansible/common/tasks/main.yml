@@ -1,0 +1,63 @@
+---
+- name: install yum-cron
+  yum:
+    name: yum-cron
+    state: latest
+    lock_timeout: 120
+  vars:
+    ansible_python_interpreter: /usr/bin/python
+
+- name: modify yum-cron.conf
+  lineinfile:
+    path: /etc/yum/yum-cron.conf
+    regexp: "^apply_updates = no"
+    line: apply_updates = yes
+
+- name: set-up yum-cron.service
+  service:
+    name: yum-cron
+    state: started
+    enabled: yes
+
+- name: install Bind-utils
+  yum:
+    name: bind-utils
+    state: latest
+    lock_timeout: 120
+  vars:
+    ansible_python_interpreter: /usr/bin/python
+
+- name: upgrade all packages
+  yum:
+    name: "*"
+    state: latest
+    lock_timeout: 120
+  vars:
+    ansible_python_interpreter: /usr/bin/python
+
+- name: Enable Extra amazon-linux-extra repo
+  command: amazon-linux-extras install epel -y
+
+- name: folders for config
+  ansible.builtin.file:
+    path: /mattermost-volume/config
+    state: directory
+    mode: "0755"
+
+- name: folders for data
+  ansible.builtin.file:
+    path: /mattermost-volume/data
+    state: directory
+    mode: "0755"
+
+- name: folders for plugins
+  ansible.builtin.file:
+    path: /mattermost-volume/plugins
+    state: directory
+    mode: "0755"
+
+- name: folders for client plugins
+  ansible.builtin.file:
+    path: /mattermost-volume/client-plugins
+    state: directory
+    mode: "0755"

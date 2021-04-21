@@ -1,0 +1,101 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create Security Groups for Amulet
+
+Parameters:
+  Vpc:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC for security groups
+
+Resources:
+  LoadBalancerSG:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Mattermost-alb"
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+        - FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+
+  MattermostSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Mattermost SG"
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - FromPort: 8000
+          IpProtocol: tcp
+          ToPort: 8000
+          SourceSecurityGroupId:
+            Ref: LoadBalancerSG
+
+  BastionHostSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "BastionHost SG"
+      VpcId: !Ref Vpc
+
+  EFSSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "EFS Security Group"
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - FromPort: 2049
+          IpProtocol: tcp
+          ToPort: 2049
+          Description: Allow EFS access to mattermost
+          SourceSecurityGroupId:
+            Ref: MattermostSG
+        - FromPort: 2049
+          IpProtocol: tcp
+          ToPort: 2049
+          Description: Allow EFS access to Bastion Host
+          SourceSecurityGroupId:
+            Ref: BastionHostSG
+
+  DbSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgresSG
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          Description: Allow DB access from mattermost
+          SourceSecurityGroupId:
+            Ref: MattermostSG
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          Description: Allow DB access from bastionhost
+          SourceSecurityGroupId:
+            Ref: BastionHostSG
+
+Outputs:
+  BastionHostSG:
+    Description: "BastionHost SG"
+    Value: !GetAtt BastionHostSG.GroupId
+
+  LoadBalancerSG:
+    Description: "LoadBalancer SG"
+    Value: !GetAtt LoadBalancerSG.GroupId
+
+  MattermostSG:
+    Description: "Mattermost App SG"
+    Value: !GetAtt MattermostSG.GroupId
+
+  EFSSG:
+    Description: "EFS SG"
+    Value: !GetAtt EFSSG.GroupId
+
+  DatabaseSG:
+    Description: "Database SG"
+    Value: !GetAtt DbSG.GroupId

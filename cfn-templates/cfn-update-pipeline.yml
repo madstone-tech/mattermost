@@ -1,0 +1,168 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  Code Pipeline to Build and deploy Containers
+
+Parameters:
+  CodeBuildServiceRoleArn:
+    Type: String
+    AllowedPattern: ^|(arn:aws:iam:)([a-zA-Z0-9/:-])*([a-zA-Z0-9])$
+    MinLength: 1
+
+  ImageTag:
+    Type: String
+    Default: latest
+
+  CodePipelineServiceRoleArn:
+    Type: String
+
+  ArtifactBucket:
+    Type: String
+
+  ClusterName:
+    Type: String
+
+  ServiceName:
+    Type: String
+
+  ContainerRegistry:
+    Type: String
+
+Resources:
+  UpdateService:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Description: Update service of containers
+      ServiceRole: !Ref CodeBuildServiceRoleArn
+      Artifacts:
+        Type: "CODEPIPELINE"
+      Source:
+        Type: "CODEPIPELINE"
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo Logging in to Amazon ECR....
+                - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION) 
+            build:
+              commands:
+               - aws ecs update-service --cluster $CLUSTER_NAME --desired-count 1 --service $SERVICE_NAME
+            post_build:
+              commands:
+                - echo service updated
+      Environment:
+        ComputeType: "BUILD_GENERAL1_MEDIUM"
+        Image: "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
+        Type: "LINUX_CONTAINER"
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: CLUSTER_NAME
+            Value: !Sub ${ClusterName}
+          - Name: SERVICE_NAME
+            Value: !Sub ${ServiceName}
+
+  ArtifactUpdate:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Description: adjust artifact file for ECS
+      ServiceRole: !Ref CodeBuildServiceRoleArn
+      Artifacts:
+        Type: "CODEPIPELINE"
+      Source:
+        Type: "CODEPIPELINE"
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              commands:
+                - echo install jq
+                - yum install jq -y
+            pre_build:
+              commands:
+                - echo Artifact pre adjustment
+                - cat imageDetail.json
+            build:
+              commands:
+                - cat imageDetail.json | jq '[{ "name":"mattermost-server","imageUri":.ImageURI}]' > imagedefinition.json
+            post_build:
+              commands:
+                - echo Post adjustment
+                - cat imagedefinition.json
+          artifacts:
+            files:
+              - imagedefinition.json
+      Environment:
+        ComputeType: "BUILD_GENERAL1_MEDIUM"
+        Image: "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
+        Type: "LINUX_CONTAINER"
+        PrivilegedMode: true
+
+  BuildPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !Ref CodePipelineServiceRoleArn
+      ArtifactStore:
+        Location: !Ref ArtifactBucket
+        Type: S3
+      Stages:
+        - Name: ECR
+          Actions:
+            - Name: ContainerRegistry
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: "1"
+                Provider: ECR
+              Configuration:
+                ImageTag: !Ref ImageTag
+                RepositoryName: !Ref ContainerRegistry
+              OutputArtifacts:
+                - Name: SourceJSON
+        - Name: AdjustArtifact
+          Actions:
+            - Name: AdjustArtifact
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: "1"
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref ArtifactUpdate
+              InputArtifacts:
+                - Name: SourceJSON
+              OutputArtifacts:
+                - Name: BuildOutput
+        - Name: Deploy
+          Actions:
+            - Name: Deploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: "1"
+                Provider: ECS
+              Configuration:
+                ClusterName: !Sub ${ClusterName}
+                ServiceName: !Sub "${ServiceName}"
+                FileName: imagedefinition.json
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+        - Name: UpdateService
+          Actions:
+            - Name: UpdateService
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: "1"
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref UpdateService
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+Outputs:
+  PipelineUrl:
+    Value: !Sub https://console.aws.amazon.com/codepipeline/home?region=${AWS::Region}#/view/${BuildPipeline}

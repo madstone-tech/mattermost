@@ -1,0 +1,288 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Master Cloudformation Template to Deploy Mattermost on AWS
+
+Parameters:
+  Route53ZoneName:
+    Type: String
+    Description: Name of your Route53 ZoneName
+
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Pick the HostedZoneId of the Route53 Zone Name
+
+  FQDomain:
+    Type: String
+    Description: Fully Qualified domain of the app i.e. chat.domain.com
+
+  EnvironmentName:
+    Type: String
+
+  S3BucketCFNTemplates:
+    Type: String
+    Description: S3 Bucket Name for CFN Templates
+
+  SSHKeyPair:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: SSHKey for access to ECS instances
+
+  ContainerRegistry:
+    Type: String
+
+  BackupPolicyParam:
+    Description: Backup Policy Value
+    Type: String
+    Default: ENABLED
+    AllowedValues:
+      - "ENABLED"
+      - "DISABLED"
+
+  RetentionDays:
+    Type: Number
+    Description: how many to keep logs in Cloudwatch
+    Default: 7
+    AllowedValues:
+      - 1
+      - 3
+      - 5
+      - 7
+      - 14
+      - 30
+      - 60
+      - 90
+      - 120
+      - 150
+      - 180
+      - 365
+      - 400
+      - 545
+      - 731
+      - 1827
+      - 3653
+
+  EFSLifecyclePolicy:
+    Description: Lifecycle Policy to transition to IA Storage Class
+    Type: String
+    Default: AFTER_30_DAYS
+    AllowedValues:
+      - "AFTER_14_DAYS"
+      - "AFTER_30_DAYS"
+      - "AFTER_60_DAYS"
+      - "AFTER_7_DAYS"
+      - "AFTER_90_DAYS"
+
+Resources:
+  VPC:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+      Tags:
+        - Key: environment
+          Value: !Sub "${EnvironmentName}"
+      TemplateURL: !Join
+        - ""
+        - - !Sub "https://${S3BucketCFNTemplates}"
+          - !Sub ".s3.${AWS::Region}.amazonaws.com/cfn-templates/"
+          - cfn-vpc-3azs.yml
+
+  ACMCerts:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        ZoneName: !Ref Route53ZoneName
+        ECSDomainName: !Ref FQDomain
+      Tags:
+        - Key: environment
+          Value: !Sub "${EnvironmentName}"
+      TemplateURL: !Join
+        - ""
+        - - !Sub "https://${S3BucketCFNTemplates}"
+          - !Sub ".s3.${AWS::Region}.amazonaws.com/cfn-templates/"
+          - cfn-acm.yml
+
+  IAMRoles:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Join
+        - ""
+        - - !Sub "https://${S3BucketCFNTemplates}"
+          - !Sub ".s3.${AWS::Region}.amazonaws.com/cfn-templates/"
+          - cfn-iamroles.yml
+
+  SecurityGroups:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        Vpc: !GetAtt VPC.Outputs.VpcId
+      Tags:
+        - Key: environment
+          Value: !Sub "${EnvironmentName}"
+      TemplateURL: !Join
+        - ""
+        - - !Sub "https://${S3BucketCFNTemplates}"
+          - !Sub ".s3.${AWS::Region}.amazonaws.com/cfn-templates/"
+          - cfn-securitygroups.yml
+
+  EFS:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        Subnets: !Join
+          - ","
+          - - !GetAtt "VPC.Outputs.SubnetAPrivate"
+            - !GetAtt "VPC.Outputs.SubnetBPrivate"
+        SecurityGroup: !GetAtt SecurityGroups.Outputs.EFSSG
+        EFSLifecyclePolicy: !Ref EFSLifecyclePolicy
+        BackupPolicyParam: !Ref BackupPolicyParam
+      Tags:
+        - Key: environment
+          Value: !Sub "${EnvironmentName}"
+      TemplateURL: !Join
+        - ""
+        - - !Sub "https://${S3BucketCFNTemplates}"
+          - !Sub ".s3.${AWS::Region}.amazonaws.com/cfn-templates/"
+          - cfn-efs.yml
+
+  LoadBalancer:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        CertificateArn: !GetAtt ACMCerts.Outputs.certificateArn
+        Vpc: !GetAtt VPC.Outputs.VpcId
+        Subnets: !Join
+          - ","
+          - - !GetAtt "VPC.Outputs.SubnetAPublic"
+            - !GetAtt "VPC.Outputs.SubnetBPublic"
+        SecurityGroup: !GetAtt SecurityGroups.Outputs.LoadBalancerSG
+        LoadBalancerScheme: "internet-facing"
+      Tags:
+        - Key: environment
+          Value: !Sub "${EnvironmentName}"
+      TemplateURL: !Join
+        - ""
+        - - !Sub "https://${S3BucketCFNTemplates}"
+          - !Sub ".s3.${AWS::Region}.amazonaws.com/cfn-templates/"
+          - cfn-loadbalancer.yml
+
+  DNSRecords:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        HostedZoneId: !Ref HostedZoneId
+        LoadBalancerHostedZoneId: !GetAtt LoadBalancer.Outputs.LoadBalancerHostedZoneId
+        LoadBalancerDns: !GetAtt LoadBalancer.Outputs.LoadBalancerDns
+        ECSDomain: !Ref FQDomain
+      Tags:
+        - Key: environment
+          Value: !Sub "${EnvironmentName}"
+      TemplateURL: !Join
+        - ""
+        - - !Sub "https://${S3BucketCFNTemplates}"
+          - !Sub ".s3.${AWS::Region}.amazonaws.com/cfn-templates/"
+          - cfn-dns-records.yml
+
+  ECSCluster:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        Subnets: !Join
+          - ","
+          - - !GetAtt "VPC.Outputs.SubnetAPublic"
+            - !GetAtt "VPC.Outputs.SubnetBPublic"
+        BastionHostSG: !GetAtt SecurityGroups.Outputs.BastionHostSG
+        InstanceProfile: !GetAtt IAMRoles.Outputs.EC2InstanceProfile
+        InstanceRole: !GetAtt IAMRoles.Outputs.EC2InstanceRole
+        EFSId: !GetAtt EFS.Outputs.EFSFileSystemId
+        EnvironmentName: !Ref EnvironmentName
+        SSHKeyPair: !Ref SSHKeyPair
+        AnsibleS3Bucket: !Ref S3BucketCFNTemplates
+        RetentionDays: !Ref RetentionDays
+      TemplateURL: !Join
+        - ""
+        - - !Sub "https://${S3BucketCFNTemplates}"
+          - !Sub ".s3.${AWS::Region}.amazonaws.com/cfn-templates/"
+          - cfn-ecscluster.yml
+
+  UpdatePipelineArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      LifecycleConfiguration:
+        Rules:
+          - ExpirationInDays: 1
+            Status: Enabled
+
+  Database:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        DBUsername: mmuser
+        DBName: mattermost
+        DBBackupRetentionPeriod: !Ref RetentionDays
+        AppDBSubnetId: !Join
+          - ","
+          - - !GetAtt "VPC.Outputs.SubnetAPrivate"
+            - !GetAtt "VPC.Outputs.SubnetBPrivate"
+        SecurityGroup: !GetAtt SecurityGroups.Outputs.DatabaseSG
+      TemplateURL: !Join
+        - ""
+        - - !Sub "https://${S3BucketCFNTemplates}"
+          - !Sub ".s3.${AWS::Region}.amazonaws.com/cfn-templates/"
+          - cfn-db.yml
+
+  MattermostService:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        ECSCluster: !GetAtt ECSCluster.Outputs.Cluster
+        LogGroupName: !GetAtt ECSCluster.Outputs.LogGroupName
+        DesiredCount: "1"
+        ContainerCpu: "1024"
+        ContainerMemory: "2048"
+        ClusterRoleArn: !GetAtt IAMRoles.Outputs.ECSClusterRole
+        Subnets: !Join
+          - ","
+          - - !GetAtt "VPC.Outputs.SubnetAPublic"
+            - !GetAtt "VPC.Outputs.SubnetBPublic"
+        SecurityGroup: !GetAtt SecurityGroups.Outputs.MattermostSG
+        ContainerRegistry: !Ref ContainerRegistry
+        TargetGroupArn: !GetAtt LoadBalancer.Outputs.MattermostTargetGroupArn
+        EFSId: !GetAtt EFS.Outputs.EFSFileSystemId
+        DBSecrets: !GetAtt Database.Outputs.DBSecrets
+      TemplateURL: !Join
+        - ""
+        - - !Sub "https://${S3BucketCFNTemplates}"
+          - !Sub ".s3.${AWS::Region}.amazonaws.com/cfn-templates/"
+          - cfn-service.yml
+
+  UpdatePipeline:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        CodeBuildServiceRoleArn: !GetAtt IAMRoles.Outputs.CodeBuildServiceRoleArn
+        ImageTag: latest
+        CodePipelineServiceRoleArn: !GetAtt IAMRoles.Outputs.CodePipelineServiceRoleArn
+        ArtifactBucket: !Ref UpdatePipelineArtifactBucket
+        ClusterName: !GetAtt ECSCluster.Outputs.Cluster
+        ServiceName: !GetAtt MattermostService.Outputs.ServiceName
+        ContainerRegistry: !Ref ContainerRegistry
+      TemplateURL: !Join
+        - ""
+        - - !Sub "https://${S3BucketCFNTemplates}"
+          - !Sub ".s3.${AWS::Region}.amazonaws.com/cfn-templates/"
+          - cfn-update-pipeline.yml
+
+Outputs:
+  VPCId:
+    Description: "VPC Id"
+    Value: !GetAtt VPC.Outputs.VpcId
+    Export:
+      Name: !Sub "${AWS::StackName}-VPCId"
+
+  CertificateArn:
+    Description: "ACM Certificate Arn"
+    Value: !GetAtt ACMCerts.Outputs.certificateArn
+    Export:
+      Name: !Sub "${AWS::StackName}-CertificateArn"

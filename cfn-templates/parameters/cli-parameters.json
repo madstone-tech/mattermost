@@ -1,0 +1,42 @@
+[
+    {
+        "ParameterKey": "Route53ZoneName",
+        "ParameterValue": "example.com"
+    },
+    {
+        "ParameterKey": "HostedZoneId",
+        "ParameterValue": "Z03264103DY40LXP1A4SH"
+    },
+    {
+        "ParameterKey": "FQDomain",
+        "ParameterValue": "chat.example.com"
+    },
+    {
+        "ParameterKey": "EnvironmentName",
+        "ParameterValue": "mattermost-app"
+    },
+    {
+        "ParameterKey": "S3BucketCFNTemplates",
+        "ParameterValue": "s3buckettochange"
+    },
+    {
+        "ParameterKey": "SSHKeyPair",
+        "ParameterValue": "ec2-key-name"
+    },
+    {
+        "ParameterKey": "ContainerRegistry",
+        "ParameterValue": "containerregistryname"
+    },
+    {
+        "ParameterKey": "BackupPolicyParam",
+        "ParameterValue": "ENABLED"
+    },
+    {
+        "ParameterKey": "RetentionDays",
+        "ParameterValue": "7"
+    },
+    {
+        "ParameterKey": "EFSLifecyclePolicy",
+        "ParameterValue": "AFTER_30_DAYS"
+    }
+]

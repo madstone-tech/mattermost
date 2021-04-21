@@ -1,0 +1,74 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  Template to create EFS for ECS cluster
+
+Parameters:
+  Subnets:
+    Description: Subnets to attach to the EFS
+    Type: List<AWS::EC2::Subnet::Id>
+  SecurityGroup:
+    Description: Security group to attach to the EFS
+    Type: AWS::EC2::SecurityGroup::Id
+  EFSLifecyclePolicy:
+    Description: Lifecycle Policy to transition to IA Storage Class
+    Type: String
+    Default: AFTER_30_DAYS
+    AllowedValues:
+      - "AFTER_14_DAYS"
+      - "AFTER_30_DAYS"
+      - "AFTER_60_DAYS"
+      - "AFTER_7_DAYS"
+      - "AFTER_90_DAYS"
+  BackupPolicyParam:
+    Description: Backup Policy Value
+    Type: String
+    Default: ENABLED
+    AllowedValues:
+      - "ENABLED"
+      - "DISABLED"
+
+Resources:
+  EFSFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      BackupPolicy:
+        Status: !Ref BackupPolicyParam
+      PerformanceMode: generalPurpose
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-Mattermost-efs"
+      LifecyclePolicies:
+        - TransitionToIA: !Ref EFSLifecyclePolicy
+
+  EFSMountTargetA:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId:
+        Ref: EFSFileSystem
+      SecurityGroups:
+        - !Ref SecurityGroup
+      SubnetId: !Select [0, !Ref Subnets]
+
+  EFSMountTargetB:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId:
+        Ref: EFSFileSystem
+      SecurityGroups:
+        - !Ref SecurityGroup
+      SubnetId: !Select [1, !Ref Subnets]
+
+Outputs:
+  EFSFileSystemId:
+    Value: !Ref EFSFileSystem
+    Description: EFS FileSystem ID
+
+  EFSMountTargetAId:
+    Value: !Ref EFSFileSystem
+    Description: MountTargetA
+
+  EFSMountTargetBId:
+    Value: !Ref EFSFileSystem
+    Description: Node 1 MountTargetB

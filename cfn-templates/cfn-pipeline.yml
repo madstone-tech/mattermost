@@ -1,0 +1,474 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Mattermost CFN Pipeline"
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Domain Parameters"
+        Parameters:
+          - HostedZoneId
+          - ECSDomain
+      - Label:
+          default: "Cluster Environment Parameters"
+        Parameters:
+          - SSHKeyPair
+          - EnvironmentName
+      - Label:
+          default: "CI/CD Parameters"
+          Parameters:
+            - BranchName
+
+Parameters:
+  BranchName:
+    Type: String
+    Description: Branch Name CodeCommit Repo with CFN templates
+    Default: cfn-templates
+  BuildBranchName:
+    Type: String
+    Default: containerbuild
+    Description: Branch Name for CodeCommit Repo with Container Build
+
+  HostedZoneId:
+    Type: AWS::Route53::HostedZone::Id
+    Description: Pick the HostedZoneId of the Route53 Zone Name
+
+  Route53ZoneName:
+    Type: String
+    Description: Name of your Route53 ZoneName
+
+  ECSDomain:
+    Type: String
+    Description: base domain of the app i.e. ubnt.domain.com
+
+  SSHKeyPair:
+    Type: AWS::EC2::KeyPair::KeyName
+
+  EnvironmentName:
+    Type: String
+    Description: Name of the environment
+
+  DeployStackName:
+    Type: String
+    Description: Name of the stack for deployment
+
+  DockerCredentialSecrets:
+    Type: String
+    Description: Arn of secretmanager for docker secredentials
+    AllowedPattern: "^$|(arn:aws:secretsmanager:)([a-zA-Z0-9/:-])*([a-zA-Z0-9])$"
+
+Resources:
+  CodeCommit:
+    Type: "AWS::CodeCommit::Repository"
+    Properties:
+      RepositoryDescription: !Sub "Infrastructure Repo for ${EnvironmentName}"
+      RepositoryName: "mattermost"
+
+  ArtifactS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      LifecycleConfiguration:
+        Rules:
+          - ExpirationInDays: 1
+            Status: Enabled
+      AccessControl: Private
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: "Does not need logging"
+          - id: W51
+            reason: "Does not require a bucket policy."
+
+  AnsibleS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: "Does not need logging"
+          - id: W51
+            reason: "Does not require a bucket policy."
+
+  CfnTemplateS3:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: "Does not need logging"
+          - id: W51
+            reason: "Does not require a bucket policy."
+
+  MattermostRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryPolicyText: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "CodeBuildAccess",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "codebuild.amazonaws.com"
+              },
+              "Action": [
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:BatchGetImage",
+                "ecr:BatchCheckLayerAvailability"
+              ]
+            }
+          ]
+        }
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "remove untagged images",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 1
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - ecs:*
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - cloudformation:*
+                  - iam:PassRole
+                  - codecommit:GetBranch
+                  - codecommit:GetCommit
+                  - codecommit:UploadArchive
+                  - codecommit:GetUploadArchiveStatus
+                  - codecommit:CancelUploadArchive
+                  - ssm:*
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - ecr:GetAuthorizationToken
+                  - ecr:GetRepositoryPolicy
+                  - ecr:SetRepositoryPolicy
+                  - ssm:*
+                  - s3:*
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecs:*
+                  - iam:PassRole
+
+  DeployPipeline:
+    Type: "AWS::CodePipeline::Pipeline"
+    Properties:
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Location: !Sub ${ArtifactS3Bucket}
+        Type: "S3"
+      Stages:
+        - Actions:
+            - ActionTypeId:
+                Category: "Source"
+                Owner: "AWS"
+                Provider: "CodeCommit"
+                Version: "1"
+              Configuration:
+                BranchName: !Ref BranchName
+                RepositoryName: !GetAtt CodeCommit.Name
+              Name: "Source"
+              OutputArtifacts:
+                - Name: Artifact
+              Region: !Ref AWS::Region
+              Namespace: "SourceVariables"
+              RunOrder: 1
+          Name: "Source"
+        - Actions:
+            - ActionTypeId:
+                Category: "Deploy"
+                Owner: "AWS"
+                Provider: "S3"
+                Version: "1"
+              Configuration:
+                BucketName: !Ref CfnTemplateS3
+                Extract: "true"
+              Name: "ExtractToS3"
+              Region: !Ref AWS::Region
+              Namespace: "DeployVariables"
+              RunOrder: 1
+              InputArtifacts:
+                - Name: Artifact
+            - ActionTypeId:
+                Category: "Deploy"
+                Owner: "AWS"
+                Provider: "CloudFormation"
+                Version: "1"
+              Configuration:
+                ActionMode: "CREATE_UPDATE"
+                Capabilities: "CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND"
+                RoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/CloudFormationAdminRole"
+                StackName: !Sub "${DeployStackName}"
+                TemplateConfiguration: "Artifact::cfn-templates/parameters/cfn-parameters.json"
+                TemplatePath: "Artifact::cfn-templates/cfn-main.yml"
+                ParameterOverrides: !Sub |
+                  {
+                    "Route53ZoneName": "${Route53ZoneName}",
+                    "HostedZoneId": "${HostedZoneId}",
+                    "FQDomain": "${ECSDomain}",
+                    "EnvironmentName": "${EnvironmentName}",
+                    "S3BucketCFNTemplates": "${CfnTemplateS3}",
+                    "SSHKeyPair": "${SSHKeyPair}",
+                    "ContainerRegistry": "${MattermostRepository}"
+                  }
+              InputArtifacts:
+                - Name: Artifact
+              Name: "DeployStack"
+              Region: !Ref AWS::Region
+              RunOrder: 2
+          Name: "Deploy"
+
+  MattermostContainerBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Description: Building Container Images for Mattermost App
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: "CODEPIPELINE"
+      Source:
+        Type: "CODEPIPELINE"
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo Logging in to Amazon ECR....
+                - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)
+                - echo enter docker login
+                - docker login --username $DOCKER_USERNAME --password $DOCKER_ACCESS_TOKEN
+            build:
+              commands:
+                - echo "Building the image..."
+                - docker build -t $IMAGE_REPO:$IMAGE_TAG -f app/Dockerfile app/
+                - docker tag $IMAGE_REPO:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO:$IMAGE_TAG
+                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO
+            post_build:
+              commands:
+                - echo Build completed on `date`
+                - printf '[{"name":"%s","imageUri":"%s.dkr.ecr.%s.amazonaws.com/%s:%s"}]' "$IMAGE_REPO" "$AWS_ACCOUNT_ID" "$AWS_DEFAULT_REGION" "$IMAGE_REPO" "$IMAGE_TAG" > image.json
+                - cat image.json
+          artifacts:
+            files:
+              - image.json
+      Environment:
+        ComputeType: "BUILD_GENERAL1_LARGE"
+        Image: "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
+        Type: "LINUX_CONTAINER"
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: AWS_ACCOUNT_ID
+            Value: !Sub ${AWS::AccountId}
+          - Name: IMAGE_TAG
+            Value: "latest"
+          - Name: IMAGE_REPO
+            Value: !Ref MattermostRepository
+          - Name: DOCKER_USERNAME
+            Value:
+              !Join [
+                "",
+                [
+                  "{{resolve:secretsmanager:",
+                  !Ref DockerCredentialSecrets,
+                  ":SecretString:DockerUsername}}",
+                ],
+              ]
+          - Name: DOCKER_ACCESS_TOKEN
+            Value:
+              !Join [
+                "",
+                [
+                  "{{resolve:secretsmanager:",
+                  !Ref DockerCredentialSecrets,
+                  ":SecretString:DockerAccessToken}}",
+                ],
+              ]
+
+  MattermostBuildPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Location: !Ref ArtifactS3Bucket
+        Type: S3
+      Stages:
+        - Name: Commit
+          Actions:
+            - Name: CodeCommit
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: "1"
+                Provider: CodeCommit
+              Configuration:
+                RepositoryName: !GetAtt CodeCommit.Name
+                BranchName: !Ref BuildBranchName
+              OutputArtifacts:
+                - Name: App
+        - Name: BuildContainers
+          Actions:
+            - Name: BuildContainer
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: "1"
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref MattermostContainerBuild
+              InputArtifacts:
+                - Name: App
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+Outputs:
+  DeployPipelineUrl:
+    Value: !Sub https://console.aws.amazon.com/codepipeline/home?region=${AWS::Region}#/view/${DeployPipeline}
+    Description: Deploy Pipeline Url
+
+  BuildPipelineUrl:
+    Value: !Sub https://console.aws.amazon.com/codepipeline/home?region=${AWS::Region}#/view/${MattermostBuildPipeline}
+    Description: Build Pipeline Url
+
+  MattermostRepository:
+    Description: "ECR repository"
+    Value: !Ref MattermostRepository
+
+  MattermostRepositoryArn:
+    Description: "ECR repository Arn"
+    Value: !GetAtt MattermostRepository.Arn
+
+  CodeCommitName:
+    Description: CodeCommit Repo Name"
+    Value: !GetAtt CodeCommit.Name
+
+  CodeCommitSSH:
+    Description: CodeCommit Repo SSH"
+    Value: !GetAtt CodeCommit.CloneUrlSsh
+
+  CodeCommitHttp:
+    Description: CodeCommit Repo Http"
+    Value: !GetAtt CodeCommit.CloneUrlHttp
+
+  ArtifactS3BucketName:
+    Description: Name of the s3 bucket
+    Value: !Ref ArtifactS3Bucket
+
+  ArtifactS3BucketNameArn:
+    Description: Arn of the s3 bucket
+    Value: !GetAtt ArtifactS3Bucket.Arn
+
+  AnsibleS3BucketName:
+    Description: Name of the Ansible s3 bucket
+    Value: !Ref AnsibleS3Bucket
+
+  AnsibleS3BucketArn:
+    Description: Arn of the s3 bucket
+    Value: !GetAtt AnsibleS3Bucket.Arn
+
+  CfnTemplateS3Name:
+    Description: Name of the s3 bucket
+    Value: !Ref CfnTemplateS3
+
+  CfnTemplateS3Arn:
+    Description: Arn of the s3 bucket
+    Value: !GetAtt CfnTemplateS3.Arn

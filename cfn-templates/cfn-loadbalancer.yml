@@ -1,0 +1,121 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  Load Balancer and TargetGroup
+
+Parameters:
+  CertificateArn:
+    Type: String
+    Description: "HTTPS certificate ARN to attach to the load balancer"
+    AllowedPattern: ^NA|(arn:aws:acm:)([a-zA-Z0-9/:-])*([a-zA-Z0-9])$
+    Default: "NA"
+
+  Vpc:
+    Description: VPC to attach the security groups
+    Type: String
+    AllowedPattern: "^vpc-[a-zA-Z0-9]+$"
+    MinLength: 1
+
+  Subnets:
+    Description: Subnets to attach to the load balancer
+    Type: List<AWS::EC2::Subnet::Id>
+
+  SecurityGroup:
+    Description: Security group to attach to the load balancer
+    Type: AWS::EC2::SecurityGroup::Id
+
+  LoadBalancerScheme:
+    Type: String
+    Default: "internet-facing"
+    AllowedValues:
+      - "internet-facing"
+      - "internal"
+
+  EnvironmentName:
+    Description: Name of the environment
+    Type: String
+
+Resources:
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: !Ref LoadBalancerScheme
+      Subnets:
+        - !Select [0, !Ref Subnets]
+        - !Select [1, !Ref Subnets]
+      SecurityGroups:
+        - !Ref SecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-LB"
+      Type: application
+
+  ApplicationLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - RedirectConfig:
+            Host: "#{host}"
+            Path: "/#{path}"
+            Port: "443"
+            Protocol: "HTTPS"
+            Query: "#{query}"
+            StatusCode: HTTP_301
+          Type: redirect
+
+  ApplicationLoadBalancerListenerSsl:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-FS-1-2-Res-2019-08
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MattermostTargetGroup
+
+  MattermostTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref Vpc
+      Protocol: HTTP
+      Matcher:
+        HttpCode: "200"
+      HealthCheckIntervalSeconds: 60
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 30
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3
+      TargetType: ip
+      Port: 8000
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "300"
+
+Outputs:
+  MattermostTargetGroupArn:
+    Description: "Mattermost Target Group ARN"
+    Value: !Ref MattermostTargetGroup
+
+  LoadBalancerDns:
+    Description: URL of the cluster load balancer.
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+
+  LoadBalancerUrl:
+    Description: URL of the cluster load balancer.
+    Value: !Sub https://${ApplicationLoadBalancer.DNSName}
+
+  LoadBalancerArn:
+    Description: ARN of the cluster load balancer.
+    Value: !Ref ApplicationLoadBalancer
+
+  LoadBalancerHostedZoneId:
+    Description: LoadBalancer Hosted Zone Id
+    Value: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID

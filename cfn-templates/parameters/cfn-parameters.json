@@ -1,0 +1,9 @@
+{
+    "Parameters": {
+        "EFSLifecyclePolicy": "AFTER_14_DAYS",
+        "BackupPolicyParam": "ENABLED"
+    },
+    "Tags": {
+        "EnvironmentName": "mattermost-app"
+    }
+}
