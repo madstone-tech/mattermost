@@ -64,9 +64,7 @@ Parameters:
       - 14400
       - 86400
 
-
 Resources:
-
   DBSubnetGroup:
     Type: "AWS::RDS::DBSubnetGroup"
     Properties:
@@ -129,7 +127,6 @@ Resources:
         MaxCapacity: !Ref ScalingConfigurationMaxCapacity
         MinCapacity: !Ref ScalingConfigurationMinCapacity
         SecondsUntilAutoPause: !Ref ScalingConfigurationSecondsUntilAutoPause
-
 
   SecretRDSInstanceAttachment:
     Type: "AWS::SecretsManager::SecretTargetAttachment"
