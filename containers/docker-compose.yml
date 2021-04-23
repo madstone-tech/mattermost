@@ -61,7 +61,7 @@ services:
     restart: unless-stopped
     container_name: matterbridge
     volumes:
-      - matterbridge-config:/matterbridge/config:rw
+      - ./matterbridge/config/matterbridge.toml:/matterbridge/config/matterbridge.toml
     networks: 
       - mattermost-net
       
@@ -72,6 +72,8 @@ services:
       - "8443:443"
     read_only: true
     restart: unless-stopped
+    environment: 
+      - APP_HOST=mattermost
     volumes:
       # This directory must have cert files if you want to enable SSL
       - web:/cert:ro

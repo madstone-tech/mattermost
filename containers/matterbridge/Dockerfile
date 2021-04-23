@@ -1,6 +1,7 @@
 FROM amazonlinux:latest
 LABEL version="1.22.1"
 LABEL maintaner="Madstone Technology"
+
 # amazonlinux dependencies
 RUN yum update -y && \
 	amazon-linux-extras install epel golang1.11 -y && \
@@ -37,7 +38,6 @@ RUN chmod +x /matterbridge/matterbridge && \
 	chown -R matterbridge:matterbridge /matterbridge	
 
 USER matterbridge
-COPY matterbridge-sample.toml /matterbridge/config/matterbridge.toml
 
 WORKDIR /matterbridge
 CMD ["/matterbridge/matterbridge","-conf","/matterbridge/config/matterbridge.toml"]
