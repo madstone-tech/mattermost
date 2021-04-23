@@ -4,6 +4,7 @@ services:
   db:
     image: postgres:latest
     restart: unless-stopped
+    container_name: db
     environment:
       - POSTGRES_PASSWORD=mmuser_password
       - POSTGRES_USER=mmuser
@@ -27,13 +28,15 @@ services:
         - db
     networks: 
       - mattermost-net  
-  app:
+
+  mattermost:
     build:
       context: app
       args:
        - edition=team
        - MM_VERSION=5.34.2
     restart: unless-stopped
+    container_name: mattermost
     volumes:
       - mattermost-config:/mattermost/config:rw
       - mattermost-data:/mattermost/data:rw
@@ -48,6 +51,20 @@ services:
       #- MM_CONFIG=/mattermost/config/config.json
     networks: 
       - mattermost-net
+
+
+  matterbridge:
+    build:
+      context: matterbridge
+      args:
+        - VERSION=1.22.1
+    restart: unless-stopped
+    container_name: matterbridge
+    volumes:
+      - matterbridge-config:/matterbridge/config:rw
+    networks: 
+      - mattermost-net
+      
   web:
     build: web
     ports:
@@ -69,6 +86,7 @@ volumes:
   mattermost-logs:
   mattermost-plugins:
   mattermost-client-plugins:
+  matterbridge-config:
   web:
 
 networks:
