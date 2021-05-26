@@ -359,7 +359,7 @@ Resources:
           - Name: AWS_ACCOUNT_ID
             Value: !Sub ${AWS::AccountId}
           - Name: IMAGE_TAG
-            Value: "latest"
+            Value: "latest-amd64"
           - Name: IMAGE_REPO
             Value: !Ref MattermostRepository
           - Name: DOCKER_USERNAME
@@ -382,6 +382,122 @@ Resources:
                   ":SecretString:DockerAccessToken}}",
                 ],
               ]
+          - Name: DOCKER_CLI_EXPERIMENTAL
+            Value: enabled
+
+  MattermostContainerBuildArm64:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Description: Building Container Images for Mattermost App
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: "CODEPIPELINE"
+      Source:
+        Type: "CODEPIPELINE"
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo Logging in to Amazon ECR....
+                - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)
+                - echo enter docker login
+                - docker login --username $DOCKER_USERNAME --password $DOCKER_ACCESS_TOKEN
+            build:
+              commands:
+                - echo "Building the image..."
+                - docker build -t $IMAGE_REPO:$IMAGE_TAG -f app/Dockerfile app/
+                - docker tag $IMAGE_REPO:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO:$IMAGE_TAG
+                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO
+            post_build:
+              commands:
+                - echo Build completed on `date`
+                - printf '[{"name":"%s","imageUri":"%s.dkr.ecr.%s.amazonaws.com/%s:%s"}]' "$IMAGE_REPO" "$AWS_ACCOUNT_ID" "$AWS_DEFAULT_REGION" "$IMAGE_REPO" "$IMAGE_TAG" > image.json
+                - cat image.json
+          artifacts:
+            files:
+              - image.json
+      Environment:
+        ComputeType: "BUILD_GENERAL1_LARGE"
+        Image: "aws/codebuild/amazonlinux2-aarch64-standard:2.0"
+        Type: "ARM_CONTAINER"
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: AWS_ACCOUNT_ID
+            Value: !Sub ${AWS::AccountId}
+          - Name: IMAGE_TAG
+            Value: "latest-arm64"
+          - Name: IMAGE_REPO
+            Value: !Ref MattermostRepository
+          - Name: DOCKER_USERNAME
+            Value:
+              !Join [
+                "",
+                [
+                  "{{resolve:secretsmanager:",
+                  !Ref DockerCredentialSecrets,
+                  ":SecretString:DockerUsername}}",
+                ],
+              ]
+          - Name: DOCKER_ACCESS_TOKEN
+            Value:
+              !Join [
+                "",
+                [
+                  "{{resolve:secretsmanager:",
+                  !Ref DockerCredentialSecrets,
+                  ":SecretString:DockerAccessToken}}",
+                ],
+              ]
+          - Name: DOCKER_CLI_EXPERIMENTAL
+            Value: enabled
+
+  ContainerManifestUpdate:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Description: Update ECR Manifest to support Multi-Arch
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: "CODEPIPELINE"
+      Source:
+        Type: "CODEPIPELINE"
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo Logging in to Amazon ECR....
+                - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)
+            build:
+              commands:
+                - echo "Create manifest..."
+                - docker manifest create $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO:$IMAGE_TAG --amend $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO:$IMAGE_TAG_AMD64 --amend $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO:$IMAGE_TAG_ARM64
+                - docker manifest push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO
+            post_build:
+              commands:
+                - echo Build completed on `date`
+      Environment:
+        ComputeType: "BUILD_GENERAL1_LARGE"
+        Image: "aws/codebuild/amazonlinux2-aarch64-standard:2.0"
+        Type: "ARM_CONTAINER"
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: AWS_ACCOUNT_ID
+            Value: !Sub ${AWS::AccountId}
+          - Name: IMAGE_TAG
+            Value: "latest"
+          - Name: IMAGE_TAG_AMD64
+            Value: "latest-amd64"
+          - Name: IMAGE_TAG_ARM64
+            Value: "latest-arm64"
+          - Name: IMAGE_REPO
+            Value: !Ref MattermostRepository
+          - Name: DOCKER_CLI_EXPERIMENTAL
+            Value: enabled
 
   MattermostBuildPipeline:
     Type: AWS::CodePipeline::Pipeline
@@ -391,7 +507,7 @@ Resources:
         Location: !Ref ArtifactS3Bucket
         Type: S3
       Stages:
-        - Name: Commit
+        - Name: Source
           Actions:
             - Name: CodeCommit
               ActionTypeId:
@@ -406,7 +522,7 @@ Resources:
                 - Name: App
         - Name: BuildContainers
           Actions:
-            - Name: BuildContainer
+            - Name: BuildContainerAmd64
               ActionTypeId:
                 Category: Build
                 Owner: AWS
@@ -418,6 +534,32 @@ Resources:
                 - Name: App
               OutputArtifacts:
                 - Name: BuildOutput
+              RunOrder: 1
+            - Name: BuildContainerArm64
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: "1"
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref MattermostContainerBuildArm64
+              InputArtifacts:
+                - Name: App
+              OutputArtifacts:
+                - Name: BuildOutputArm64
+              RunOrder: 1
+        - Name: AdjustManifest
+          Actions:
+            - Name: AdjustManifest
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: "1"
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref ContainerManifestUpdate
+              InputArtifacts:
+                - Name: App
               RunOrder: 1
 
 Outputs:
