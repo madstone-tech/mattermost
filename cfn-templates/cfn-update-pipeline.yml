@@ -192,7 +192,7 @@ Resources:
         detail:
           action-type: [PUSH]
           image-tag: [latest]
-          repository-name: !Sub "[${ContainerRegistry}]"
+          repository-name: !Ref ContainerRegistry
           result: [SUCCESS]
         detail-type: [ECR Image Action]
         source: [aws.ecr]
