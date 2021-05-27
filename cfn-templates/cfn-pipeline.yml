@@ -337,7 +337,7 @@ Resources:
             build:
               commands:
                 - echo "Building the image..."
-                - docker build -t $IMAGE_REPO:$IMAGE_TAG -f app/Dockerfile app/
+                - docker build -t $IMAGE_REPO:$IMAGE_TAG -f containers/app/Dockerfile containers/app/
                 - docker tag $IMAGE_REPO:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO:$IMAGE_TAG
                 - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO
             post_build:
@@ -406,7 +406,7 @@ Resources:
             build:
               commands:
                 - echo "Building the image..."
-                - docker build -t $IMAGE_REPO:$IMAGE_TAG -f app/Dockerfile app/
+                - docker build -t $IMAGE_REPO:$IMAGE_TAG -f containers/app/Dockerfile containers/app/
                 - docker tag $IMAGE_REPO:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO:$IMAGE_TAG
                 - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO
             post_build:
