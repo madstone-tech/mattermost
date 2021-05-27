@@ -166,6 +166,7 @@ Resources:
   ECRCloudWatchEventRole:
     Type: AWS::IAM::Role
     Properties:
+      Path: /
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -173,8 +174,8 @@ Resources:
             Principal:
               Service:
                 - events.amazonaws.com
-            Action: sts.AssumeRole
-      Path: /
+            Action:
+              - sts:AssumeRole
       Policies:
         - PolicyName: cwe-pipeline-execution
           PolicyDocument:
