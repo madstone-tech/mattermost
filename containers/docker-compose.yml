@@ -34,7 +34,7 @@ services:
       context: app
       args:
        - edition=team
-       - MM_VERSION=5.34.2
+       - MM_VERSION=5.35.1
     restart: unless-stopped
     container_name: mattermost
     volumes:
