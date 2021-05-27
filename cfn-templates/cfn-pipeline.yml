@@ -507,7 +507,7 @@ Resources:
         Location: !Ref ArtifactS3Bucket
         Type: S3
       Stages:
-        - Name: Source
+        - Name: CodeCommit
           Actions:
             - Name: CodeCommit
               ActionTypeId:
