@@ -317,7 +317,7 @@ Resources:
                 Type=efs
                 Options=defaults
                 [Install]
-                WantedBy=multi-user.target    
+                WantedBy=multi-user.target
     Properties:
       LaunchTemplateData:
         IamInstanceProfile:
@@ -336,7 +336,7 @@ Resources:
               - |
                 #!/bin/bash
                 yum install -y aws-cfn-bootstrap
-                /opt/aws/bin/cfn-init -v --region ${AWS::Region} --stack ${AWS::StackName} -c --resource BastionHostLaunchTemplate 
+                /opt/aws/bin/cfn-init -v --region ${AWS::Region} --stack ${AWS::StackName} -c default --resource BastionHostLaunchTemplate 
                 echo "before-cfn-signal - $(date)" >> /root/init.log
                 mkdir /mnt/efs
                 echo "mounting EFS - $(date)" >> /root/init.log
