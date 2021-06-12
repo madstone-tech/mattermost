@@ -318,6 +318,9 @@ Resources:
                 Options=defaults
                 [Install]
                 WantedBy=multi-user.target
+          commands:
+            00-enable-systemd.mount:
+              command: systemctl enable mnt-efs.mount
     Properties:
       LaunchTemplateData:
         IamInstanceProfile:
@@ -340,8 +343,8 @@ Resources:
                 echo "before-cfn-signal - $(date)" >> /root/init.log
                 mkdir /mnt/efs
                 echo "mounting EFS - $(date)" >> /root/init.log
-                systemctl enable mnt-efs
-                systemctl start mnt-efs
+                systemctl enable mnt-efs.mount
+                systemctl start mnt-efs.mount
                 echo "mounted ${EFSId} EFS - $(date)" >> /root/init.log
                 aws s3 sync s3://${AnsibleS3Bucket}/ansible/ /opt/playbook/ansible/
                 ansible-playbook /opt/playbook/ansible/bastionhost.yml
