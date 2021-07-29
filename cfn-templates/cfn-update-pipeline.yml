@@ -163,6 +163,46 @@ Resources:
                 - Name: BuildOutput
               RunOrder: 1
 
+  ECRCloudWatchEventRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: cwe-pipeline-execution
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: codepipeline:StartPipelineExecution
+                Resource: !Sub arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${BuildPipeline}
+
+  AmazonCloudWatchEventRule:
+    Type: "AWS::Events::Rule"
+    Properties:
+      EventPattern:
+        detail:
+          action-type: [PUSH]
+          image-tag: [latest]
+          repository-name: [!Sub "${ContainerRegistry}"]
+          result: [SUCCESS]
+        detail-type: [ECR Image Action]
+        source: [aws.ecr]
+      Targets:
+        - Arn: !Sub arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${BuildPipeline}
+          RoleArn: !GetAtt
+            - ECRCloudWatchEventRole
+            - Arn
+          Id: codepipeline-UpdatePipeline
+
 Outputs:
   PipelineUrl:
     Value: !Sub https://console.aws.amazon.com/codepipeline/home?region=${AWS::Region}#/view/${BuildPipeline}

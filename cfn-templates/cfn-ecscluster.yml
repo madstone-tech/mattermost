@@ -132,7 +132,7 @@ Resources:
             Ref: InstanceRole
       AWS::CloudFormation::Init:
         configSets:
-          default: [awslogs, config]
+          default: [awslogs, config, mountfs]
         awslogs:
           packages:
             yum:
@@ -303,6 +303,24 @@ Resources:
                 files:
                   - /etc/cfn/cfn-hup.conf
                   - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+        mountfs:
+          files:
+            /etc/systemd/system/mnt-efs.mount:
+              content: !Sub |
+                [Unit]
+                Description = Mount EFS Share
+                Wants=network.target
+                After=syslog.target network-online.target
+                [Mount]
+                What=${EFSId}:/
+                Where=/mnt/efs
+                Type=efs
+                Options=defaults
+                [Install]
+                WantedBy=multi-user.target
+          commands:
+            00-enable-systemd.mount:
+              command: systemctl enable mnt-efs.mount
     Properties:
       LaunchTemplateData:
         IamInstanceProfile:
@@ -321,10 +339,13 @@ Resources:
               - |
                 #!/bin/bash
                 yum install -y aws-cfn-bootstrap
-                /opt/aws/bin/cfn-init -v --region ${AWS::Region} --stack ${AWS::StackName} -c --resource BastionHostLaunchTemplate 
+                /opt/aws/bin/cfn-init -v --region ${AWS::Region} --stack ${AWS::StackName} -c default --resource BastionHostLaunchTemplate 
                 echo "before-cfn-signal - $(date)" >> /root/init.log
-                mkdir mattermost-volume
-                mount -t efs ${EFSId}:/ mattermost-volume
+                mkdir /mnt/efs
+                echo "mounting EFS - $(date)" >> /root/init.log
+                systemctl enable mnt-efs.mount
+                systemctl start mnt-efs.mount
+                echo "mounted ${EFSId} EFS - $(date)" >> /root/init.log
                 aws s3 sync s3://${AnsibleS3Bucket}/ansible/ /opt/playbook/ansible/
                 ansible-playbook /opt/playbook/ansible/bastionhost.yml
                 /opt/aws/bin/cfn-signal -e 0 --region ${AWS::Region} --stack ${AWS::StackName} --resource BastionHostAutoScalingGroup
