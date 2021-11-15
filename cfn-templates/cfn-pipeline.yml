@@ -1,20 +1,20 @@
-AWSTemplateFormatVersion: "2010-09-09"
-Description: "Mattermost CFN Pipeline"
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Mattermost CFN Pipeline'
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
-          default: "Domain Parameters"
+          default: 'Domain Parameters'
         Parameters:
           - HostedZoneId
           - ECSDomain
       - Label:
-          default: "Cluster Environment Parameters"
+          default: 'Cluster Environment Parameters'
         Parameters:
           - SSHKeyPair
           - EnvironmentName
       - Label:
-          default: "CI/CD Parameters"
+          default: 'CI/CD Parameters'
           Parameters:
             - BranchName
 
@@ -64,14 +64,14 @@ Parameters:
   DockerCredentialSecrets:
     Type: String
     Description: Arn of secretmanager for docker secredentials
-    AllowedPattern: "^$|(arn:aws:secretsmanager:)([a-zA-Z0-9/:-])*([a-zA-Z0-9])$"
+    AllowedPattern: '^$|(arn:aws:secretsmanager:)([a-zA-Z0-9/:-])*([a-zA-Z0-9])$'
 
 Resources:
   CodeCommit:
-    Type: "AWS::CodeCommit::Repository"
+    Type: 'AWS::CodeCommit::Repository'
     Properties:
-      RepositoryDescription: !Sub "Infrastructure Repo for ${EnvironmentName}"
-      RepositoryName: "mattermost"
+      RepositoryDescription: !Sub 'Infrastructure Repo for ${EnvironmentName}'
+      RepositoryName: 'mattermost'
 
   ArtifactS3Bucket:
     Type: AWS::S3::Bucket
@@ -94,9 +94,9 @@ Resources:
       cfn_nag:
         rules_to_suppress:
           - id: W35
-            reason: "Does not need logging"
+            reason: 'Does not need logging'
           - id: W51
-            reason: "Does not require a bucket policy."
+            reason: 'Does not require a bucket policy.'
 
   AnsibleS3Bucket:
     Type: AWS::S3::Bucket
@@ -115,9 +115,9 @@ Resources:
       cfn_nag:
         rules_to_suppress:
           - id: W35
-            reason: "Does not need logging"
+            reason: 'Does not need logging'
           - id: W51
-            reason: "Does not require a bucket policy."
+            reason: 'Does not require a bucket policy.'
 
   CfnTemplateS3:
     Type: AWS::S3::Bucket
@@ -136,9 +136,9 @@ Resources:
       cfn_nag:
         rules_to_suppress:
           - id: W35
-            reason: "Does not need logging"
+            reason: 'Does not need logging'
           - id: W51
-            reason: "Does not require a bucket policy."
+            reason: 'Does not require a bucket policy.'
 
   MattermostRepository:
     Type: AWS::ECR::Repository
@@ -197,16 +197,13 @@ Resources:
           PolicyDocument:
             Version: 2012-10-17
             Statement:
-              - Resource: "*"
+              - Resource: '*'
                 Effect: Allow
                 Action:
                   - ecs:*
                   - codebuild:StartBuild
                   - codebuild:BatchGetBuilds
-                  - s3:PutObject
-                  - s3:GetObject
-                  - s3:GetObjectVersion
-                  - s3:GetBucketVersioning
+                  - s3:*
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
@@ -220,6 +217,7 @@ Resources:
                   - codecommit:GetUploadArchiveStatus
                   - codecommit:CancelUploadArchive
                   - ssm:*
+                  - codestar-connections:UseConnection
 
   CodeBuildServiceRole:
     Type: AWS::IAM::Role
@@ -237,7 +235,7 @@ Resources:
           PolicyDocument:
             Version: 2012-10-17
             Statement:
-              - Resource: "*"
+              - Resource: '*'
                 Effect: Allow
                 Action:
                   - logs:CreateLogGroup
@@ -259,20 +257,20 @@ Resources:
                   - iam:PassRole
 
   DeployPipeline:
-    Type: "AWS::CodePipeline::Pipeline"
+    Type: 'AWS::CodePipeline::Pipeline'
     Properties:
       RoleArn: !GetAtt CodePipelineServiceRole.Arn
       ArtifactStore:
         Location: !Sub ${ArtifactS3Bucket}
-        Type: "S3"
+        Type: 'S3'
       Stages:
         - Actions:
-            - Name: "Source"
+            - Name: 'Source'
               ActionTypeId:
-                Category: "Source"
-                Owner: "AWS"
+                Category: 'Source'
+                Owner: 'AWS'
                 Provider: CodeStarSourceConnection
-                Version: "1"
+                Version: '1'
               Configuration:
                 BranchName: !Ref BranchName
                 FullRepositoryId: !Ref RepoName
@@ -280,36 +278,36 @@ Resources:
               OutputArtifacts:
                 - Name: Artifact
               Region: !Ref AWS::Region
-              Namespace: "SourceVariables"
+              Namespace: 'SourceVariables'
               RunOrder: 1
-          Name: "Source"
+          Name: 'Source'
         - Actions:
             - ActionTypeId:
-                Category: "Deploy"
-                Owner: "AWS"
-                Provider: "S3"
-                Version: "1"
+                Category: 'Deploy'
+                Owner: 'AWS'
+                Provider: 'S3'
+                Version: '1'
               Configuration:
                 BucketName: !Ref CfnTemplateS3
-                Extract: "true"
-              Name: "ExtractToS3"
+                Extract: 'true'
+              Name: 'ExtractToS3'
               Region: !Ref AWS::Region
-              Namespace: "DeployVariables"
+              Namespace: 'DeployVariables'
               RunOrder: 1
               InputArtifacts:
                 - Name: Artifact
             - ActionTypeId:
-                Category: "Deploy"
-                Owner: "AWS"
-                Provider: "CloudFormation"
-                Version: "1"
+                Category: 'Deploy'
+                Owner: 'AWS'
+                Provider: 'CloudFormation'
+                Version: '1'
               Configuration:
-                ActionMode: "CREATE_UPDATE"
-                Capabilities: "CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND"
-                RoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/CloudFormationAdminRole"
-                StackName: !Sub "${DeployStackName}"
-                TemplateConfiguration: "Artifact::cfn-templates/parameters/cfn-parameters.json"
-                TemplatePath: "Artifact::cfn-templates/cfn-main.yml"
+                ActionMode: 'CREATE_UPDATE'
+                Capabilities: 'CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND'
+                RoleArn: !Sub 'arn:aws:iam::${AWS::AccountId}:role/CloudFormationAdminRole'
+                StackName: !Sub '${DeployStackName}'
+                TemplateConfiguration: 'Artifact::cfn-templates/parameters/cfn-parameters.json'
+                TemplatePath: 'Artifact::cfn-templates/cfn-main.yml'
                 ParameterOverrides: !Sub |
                   {
                     "Route53ZoneName": "${Route53ZoneName}",
@@ -322,10 +320,10 @@ Resources:
                   }
               InputArtifacts:
                 - Name: Artifact
-              Name: "DeployStack"
+              Name: 'DeployStack'
               Region: !Ref AWS::Region
               RunOrder: 2
-          Name: "Deploy"
+          Name: 'Deploy'
 
   MattermostContainerBuild:
     Type: AWS::CodeBuild::Project
@@ -333,9 +331,9 @@ Resources:
       Description: Building Container Images for Mattermost App
       ServiceRole: !GetAtt CodeBuildServiceRole.Arn
       Artifacts:
-        Type: "CODEPIPELINE"
+        Type: 'CODEPIPELINE'
       Source:
-        Type: "CODEPIPELINE"
+        Type: 'CODEPIPELINE'
         BuildSpec: |
           version: 0.2
           phases:
@@ -360,9 +358,9 @@ Resources:
             files:
               - image.json
       Environment:
-        ComputeType: "BUILD_GENERAL1_LARGE"
-        Image: "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
-        Type: "LINUX_CONTAINER"
+        ComputeType: 'BUILD_GENERAL1_LARGE'
+        Image: 'aws/codebuild/amazonlinux2-x86_64-standard:3.0'
+        Type: 'LINUX_CONTAINER'
         PrivilegedMode: true
         EnvironmentVariables:
           - Name: AWS_DEFAULT_REGION
@@ -370,27 +368,27 @@ Resources:
           - Name: AWS_ACCOUNT_ID
             Value: !Sub ${AWS::AccountId}
           - Name: IMAGE_TAG
-            Value: "latest-amd64"
+            Value: 'latest-amd64'
           - Name: IMAGE_REPO
             Value: !Ref MattermostRepository
           - Name: DOCKER_USERNAME
             Value:
               !Join [
-                "",
+                '',
                 [
-                  "{{resolve:secretsmanager:",
+                  '{{resolve:secretsmanager:',
                   !Ref DockerCredentialSecrets,
-                  ":SecretString:DockerUsername}}",
+                  ':SecretString:DockerUsername}}',
                 ],
               ]
           - Name: DOCKER_ACCESS_TOKEN
             Value:
               !Join [
-                "",
+                '',
                 [
-                  "{{resolve:secretsmanager:",
+                  '{{resolve:secretsmanager:',
                   !Ref DockerCredentialSecrets,
-                  ":SecretString:DockerAccessToken}}",
+                  ':SecretString:DockerAccessToken}}',
                 ],
               ]
           - Name: DOCKER_CLI_EXPERIMENTAL
@@ -402,9 +400,9 @@ Resources:
       Description: Building Container Images for Mattermost App
       ServiceRole: !GetAtt CodeBuildServiceRole.Arn
       Artifacts:
-        Type: "CODEPIPELINE"
+        Type: 'CODEPIPELINE'
       Source:
-        Type: "CODEPIPELINE"
+        Type: 'CODEPIPELINE'
         BuildSpec: |
           version: 0.2
           phases:
@@ -429,9 +427,9 @@ Resources:
             files:
               - image.json
       Environment:
-        ComputeType: "BUILD_GENERAL1_LARGE"
-        Image: "aws/codebuild/amazonlinux2-aarch64-standard:2.0"
-        Type: "ARM_CONTAINER"
+        ComputeType: 'BUILD_GENERAL1_LARGE'
+        Image: 'aws/codebuild/amazonlinux2-aarch64-standard:2.0'
+        Type: 'ARM_CONTAINER'
         PrivilegedMode: true
         EnvironmentVariables:
           - Name: AWS_DEFAULT_REGION
@@ -439,27 +437,27 @@ Resources:
           - Name: AWS_ACCOUNT_ID
             Value: !Sub ${AWS::AccountId}
           - Name: IMAGE_TAG
-            Value: "latest-arm64"
+            Value: 'latest-arm64'
           - Name: IMAGE_REPO
             Value: !Ref MattermostRepository
           - Name: DOCKER_USERNAME
             Value:
               !Join [
-                "",
+                '',
                 [
-                  "{{resolve:secretsmanager:",
+                  '{{resolve:secretsmanager:',
                   !Ref DockerCredentialSecrets,
-                  ":SecretString:DockerUsername}}",
+                  ':SecretString:DockerUsername}}',
                 ],
               ]
           - Name: DOCKER_ACCESS_TOKEN
             Value:
               !Join [
-                "",
+                '',
                 [
-                  "{{resolve:secretsmanager:",
+                  '{{resolve:secretsmanager:',
                   !Ref DockerCredentialSecrets,
-                  ":SecretString:DockerAccessToken}}",
+                  ':SecretString:DockerAccessToken}}',
                 ],
               ]
           - Name: DOCKER_CLI_EXPERIMENTAL
@@ -471,9 +469,9 @@ Resources:
       Description: Update ECR Manifest to support Multi-Arch
       ServiceRole: !GetAtt CodeBuildServiceRole.Arn
       Artifacts:
-        Type: "CODEPIPELINE"
+        Type: 'CODEPIPELINE'
       Source:
-        Type: "CODEPIPELINE"
+        Type: 'CODEPIPELINE'
         BuildSpec: |
           version: 0.2
           phases:
@@ -490,9 +488,9 @@ Resources:
               commands:
                 - echo Build completed on `date`
       Environment:
-        ComputeType: "BUILD_GENERAL1_LARGE"
-        Image: "aws/codebuild/amazonlinux2-aarch64-standard:2.0"
-        Type: "ARM_CONTAINER"
+        ComputeType: 'BUILD_GENERAL1_LARGE'
+        Image: 'aws/codebuild/amazonlinux2-aarch64-standard:2.0'
+        Type: 'ARM_CONTAINER'
         PrivilegedMode: true
         EnvironmentVariables:
           - Name: AWS_DEFAULT_REGION
@@ -500,11 +498,11 @@ Resources:
           - Name: AWS_ACCOUNT_ID
             Value: !Sub ${AWS::AccountId}
           - Name: IMAGE_TAG
-            Value: "latest"
+            Value: 'latest'
           - Name: IMAGE_TAG_AMD64
-            Value: "latest-amd64"
+            Value: 'latest-amd64'
           - Name: IMAGE_TAG_ARM64
-            Value: "latest-arm64"
+            Value: 'latest-arm64'
           - Name: IMAGE_REPO
             Value: !Ref MattermostRepository
           - Name: DOCKER_CLI_EXPERIMENTAL
@@ -520,11 +518,11 @@ Resources:
       Stages:
         - Name: CodeCommit
           Actions:
-            - Name: "GitHubRepo"
+            - Name: 'GitHubRepo'
               ActionTypeId:
                 Category: Source
                 Owner: AWS
-                Version: "1"
+                Version: '1'
                 Provider: CodeStarSourceConnection
               Configuration:
                 ConnectionArn: !Ref GithubConnectionArn
@@ -538,7 +536,7 @@ Resources:
               ActionTypeId:
                 Category: Build
                 Owner: AWS
-                Version: "1"
+                Version: '1'
                 Provider: CodeBuild
               Configuration:
                 ProjectName: !Ref MattermostContainerBuild
@@ -551,7 +549,7 @@ Resources:
               ActionTypeId:
                 Category: Build
                 Owner: AWS
-                Version: "1"
+                Version: '1'
                 Provider: CodeBuild
               Configuration:
                 ProjectName: !Ref MattermostContainerBuildArm64
@@ -566,7 +564,7 @@ Resources:
               ActionTypeId:
                 Category: Build
                 Owner: AWS
-                Version: "1"
+                Version: '1'
                 Provider: CodeBuild
               Configuration:
                 ProjectName: !Ref ContainerManifestUpdate
@@ -584,11 +582,11 @@ Outputs:
     Description: Build Pipeline Url
 
   MattermostRepository:
-    Description: "ECR repository"
+    Description: 'ECR repository'
     Value: !Ref MattermostRepository
 
   MattermostRepositoryArn:
-    Description: "ECR repository Arn"
+    Description: 'ECR repository Arn'
     Value: !GetAtt MattermostRepository.Arn
 
   ArtifactS3BucketName:
