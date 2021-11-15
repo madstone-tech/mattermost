@@ -19,6 +19,16 @@ Metadata:
             - BranchName
 
 Parameters:
+  GithubConnectionArn:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: Arn of AWSGithub Connection
+    Default: /mdstn/GitHubConnectionArn
+
+  RepoName:
+    Type: String
+    Description: Repo name on Github
+    Default: madstone-tech/mattermost
+
   BranchName:
     Type: String
     Description: Branch Name CodeCommit Repo with CFN templates
@@ -257,15 +267,16 @@ Resources:
         Type: "S3"
       Stages:
         - Actions:
-            - ActionTypeId:
+            - Name: "Source"
+              ActionTypeId:
                 Category: "Source"
                 Owner: "AWS"
-                Provider: "CodeCommit"
+                Provider: CodeStarSourceConnection
                 Version: "1"
               Configuration:
                 BranchName: !Ref BranchName
-                RepositoryName: !GetAtt CodeCommit.Name
-              Name: "Source"
+                FullRepositoryId: !Ref RepoName
+                ConnectionArn: !Ref GithubConnectionArn
               OutputArtifacts:
                 - Name: Artifact
               Region: !Ref AWS::Region
@@ -339,7 +350,7 @@ Resources:
                 - echo "Building the image..."
                 - docker build -t $IMAGE_REPO:$IMAGE_TAG -f containers/app/Dockerfile containers/app/
                 - docker tag $IMAGE_REPO:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO:$IMAGE_TAG
-                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO
+                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO:$IMAGE_TAG
             post_build:
               commands:
                 - echo Build completed on `date`
@@ -408,7 +419,7 @@ Resources:
                 - echo "Building the image..."
                 - docker build -t $IMAGE_REPO:$IMAGE_TAG -f containers/app/Dockerfile containers/app/
                 - docker tag $IMAGE_REPO:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO:$IMAGE_TAG
-                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO
+                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO:$IMAGE_TAG
             post_build:
               commands:
                 - echo Build completed on `date`
@@ -509,14 +520,15 @@ Resources:
       Stages:
         - Name: CodeCommit
           Actions:
-            - Name: CodeCommit
+            - Name: "GitHubRepo"
               ActionTypeId:
                 Category: Source
                 Owner: AWS
                 Version: "1"
-                Provider: CodeCommit
+                Provider: CodeStarSourceConnection
               Configuration:
-                RepositoryName: !GetAtt CodeCommit.Name
+                ConnectionArn: !Ref GithubConnectionArn
+                FullRepositoryId: madstone-tech/mattermost
                 BranchName: !Ref BuildBranchName
               OutputArtifacts:
                 - Name: App
@@ -578,18 +590,6 @@ Outputs:
   MattermostRepositoryArn:
     Description: "ECR repository Arn"
     Value: !GetAtt MattermostRepository.Arn
-
-  CodeCommitName:
-    Description: CodeCommit Repo Name"
-    Value: !GetAtt CodeCommit.Name
-
-  CodeCommitSSH:
-    Description: CodeCommit Repo SSH"
-    Value: !GetAtt CodeCommit.CloneUrlSsh
-
-  CodeCommitHttp:
-    Description: CodeCommit Repo Http"
-    Value: !GetAtt CodeCommit.CloneUrlHttp
 
   ArtifactS3BucketName:
     Description: Name of the s3 bucket
