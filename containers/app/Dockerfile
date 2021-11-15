@@ -7,9 +7,9 @@ ENV MM_INSTALL_TYPE=docker
 
 # amazonlinux dependencies
 RUN yum update -y && \
-  amazon-linux-extras install epel -y && \
-  yum clean all;rm -rf /var/cache/yum && \
-  yum -y install openssl which expect tar openssh-clients \
+	amazon-linux-extras install epel -y && \
+	yum clean all;rm -rf /var/cache/yum && \
+	yum -y install openssl which expect tar openssh-clients \
 	ca-certificates \
 	curl \
 	jq \
@@ -30,14 +30,14 @@ ARG edition=enterprise
 ARG PUID=2000
 ARG PGID=2000
 ARG MM_BINARY=
-ARG MM_VERSION=5.35.1
+ARG MM_VERSION=6.0.2
 
 # Get Mattermost
 
 RUN mkdir -p /mattermost/data /mattermost/plugins /mattermost/client/plugins \
 	&& if [ ! -z "$MM_BINARY" ]; then curl $MM_BINARY | tar -xvz ; \
-		elif [ "$edition" = "team" ] ; then curl https://releases.mattermost.com/$MM_VERSION/mattermost-team-$MM_VERSION-linux-amd64.tar.gz?src=docker-app | tar -xvz ; \
-		else curl https://releases.mattermost.com/$MM_VERSION/mattermost-$MM_VERSION-linux-amd64.tar.gz?src=docker-app | tar -xvz ; fi \
+	elif [ "$edition" = "team" ] ; then curl https://releases.mattermost.com/$MM_VERSION/mattermost-team-$MM_VERSION-linux-amd64.tar.gz?src=docker-app | tar -xvz ; \
+	else curl https://releases.mattermost.com/$MM_VERSION/mattermost-$MM_VERSION-linux-amd64.tar.gz?src=docker-app | tar -xvz ; fi \
 	&& cp /mattermost/config/config.json /config.json.save \
 	&& rm -rf /mattermost/config/config.json \
 	&& groupadd -g ${PGID} mattermost \
