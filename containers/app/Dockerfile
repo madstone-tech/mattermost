@@ -1,4 +1,4 @@
-FROM amazonlinux:latest
+FROM public.ecr.aws/amazonlinux/amazonlinux:latest
 
 # Some ENV variables
 ENV PATH="/mattermost/bin:${PATH}"

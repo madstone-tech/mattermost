@@ -344,8 +344,6 @@ Resources:
               commands:
                 - echo Logging in to Amazon ECR....
                 - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)
-                - echo enter docker login
-                - docker login --username $DOCKER_USERNAME --password $DOCKER_ACCESS_TOKEN
             build:
               commands:
                 - echo "Building the image..."
@@ -413,8 +411,6 @@ Resources:
               commands:
                 - echo Logging in to Amazon ECR....
                 - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)
-                - echo enter docker login
-                - docker login --username $DOCKER_USERNAME --password $DOCKER_ACCESS_TOKEN
             build:
               commands:
                 - echo "Building the image..."
