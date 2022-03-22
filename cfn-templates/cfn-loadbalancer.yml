@@ -1,5 +1,5 @@
 ---
-AWSTemplateFormatVersion: "2010-09-09"
+AWSTemplateFormatVersion: '2010-09-09'
 
 Description: >
   Load Balancer and TargetGroup
@@ -7,14 +7,14 @@ Description: >
 Parameters:
   CertificateArn:
     Type: String
-    Description: "HTTPS certificate ARN to attach to the load balancer"
+    Description: 'HTTPS certificate ARN to attach to the load balancer'
     AllowedPattern: ^NA|(arn:aws:acm:)([a-zA-Z0-9/:-])*([a-zA-Z0-9])$
-    Default: "NA"
+    Default: 'NA'
 
   Vpc:
     Description: VPC to attach the security groups
     Type: String
-    AllowedPattern: "^vpc-[a-zA-Z0-9]+$"
+    AllowedPattern: '^vpc-[a-zA-Z0-9]+$'
     MinLength: 1
 
   Subnets:
@@ -27,10 +27,10 @@ Parameters:
 
   LoadBalancerScheme:
     Type: String
-    Default: "internet-facing"
+    Default: 'internet-facing'
     AllowedValues:
-      - "internet-facing"
-      - "internal"
+      - 'internet-facing'
+      - 'internal'
 
   EnvironmentName:
     Description: Name of the environment
@@ -48,7 +48,7 @@ Resources:
         - !Ref SecurityGroup
       Tags:
         - Key: Name
-          Value: !Sub "${EnvironmentName}-LB"
+          Value: !Sub '${EnvironmentName}-LB'
       Type: application
 
   ApplicationLoadBalancerListener:
@@ -59,11 +59,11 @@ Resources:
       Protocol: HTTP
       DefaultActions:
         - RedirectConfig:
-            Host: "#{host}"
-            Path: "/#{path}"
-            Port: "443"
-            Protocol: "HTTPS"
-            Query: "#{query}"
+            Host: '#{host}'
+            Path: '/#{path}'
+            Port: '443'
+            Protocol: 'HTTPS'
+            Query: '#{query}'
             StatusCode: HTTP_301
           Type: redirect
 
@@ -73,7 +73,7 @@ Resources:
       LoadBalancerArn: !Ref ApplicationLoadBalancer
       Port: 443
       Protocol: HTTPS
-      SslPolicy: ELBSecurityPolicy-FS-1-2-Res-2019-08
+      SslPolicy: ELBSecurityPolicy-FS-1-2-Res-2020-10
       Certificates:
         - CertificateArn: !Ref CertificateArn
       DefaultActions:
@@ -86,7 +86,7 @@ Resources:
       VpcId: !Ref Vpc
       Protocol: HTTP
       Matcher:
-        HttpCode: "200"
+        HttpCode: '200'
       HealthCheckIntervalSeconds: 60
       HealthCheckPath: /
       HealthCheckProtocol: HTTP
@@ -97,11 +97,13 @@ Resources:
       Port: 8000
       TargetGroupAttributes:
         - Key: deregistration_delay.timeout_seconds
-          Value: "300"
+          Value: '300'
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: '3600'
 
 Outputs:
   MattermostTargetGroupArn:
-    Description: "Mattermost Target Group ARN"
+    Description: 'Mattermost Target Group ARN'
     Value: !Ref MattermostTargetGroup
 
   LoadBalancerDns:
