@@ -1,5 +1,0 @@
----
-# tasks file for BastionHost
-- name: set hostname
-  hostname:
-    name: mattermost-bastionhost

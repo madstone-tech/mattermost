@@ -1,0 +1,18 @@
+{
+  "Project": {
+    "Name": "MattermostCDK",
+    "Region": "us-east-1",
+    "ProfileName": "default",
+    "Environment": "prod"
+  },
+  "Stack": {
+    "MattermostStackCDK": {
+      "FQDN": "chat.madst.one",
+      "HostedZoneName": "madst.one",
+      "HostedZoneId": "Z2GX8BYG3MCSZA",
+      "DeploymentId": "mattermost-cdk",
+      "RetentionDays": "7",
+      "EFSLifecyclePolicy": "AFTER_30_DAYS"
+    }
+  }
+}
