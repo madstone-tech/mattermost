@@ -30,7 +30,8 @@ ARG edition=enterprise
 ARG PUID=2000
 ARG PGID=2000
 ARG MM_BINARY=
-ARG MM_VERSION=7.3.0
+ARG MM_VERSION=7.7.0
+
 
 # Get Mattermost
 
