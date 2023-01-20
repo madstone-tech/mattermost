@@ -32,6 +32,7 @@ ARG PGID=2000
 ARG MM_BINARY=
 ARG MM_VERSION=7.7.0
 
+
 # Get Mattermost
 
 RUN mkdir -p /mattermost/data /mattermost/plugins /mattermost/client/plugins \
