@@ -25,7 +25,6 @@ RUN yum update -y && \
   yum clean all && rm -rf /var/cache/yum 
 
 # Setting bash as our shell, and enabling pipefail option
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 
 ENV PATH="/mattermost/bin:${PATH}"
@@ -41,7 +40,7 @@ ARG MM_PACKAGE=https://releases.mattermost.com/${MM_VERSION}}/mattermost-${MM_VE
 # Get Mattermost
 
 RUN mkdir -p /mattermost/data /mattermost/plugins /mattermost/client/plugins \
-  && curl https://releases.mattermost.com/$MM_VERSION/mattermost-$MM_VERSION-linux-amd64.tar.gz?src=docker | tar -xvz ; \
+  && curl https://releases.mattermost.com/$MM_VERSION/mattermost-$MM_VERSION-linux-amd64.tar.gz?src=docker | tar -xvz \
   && cp /mattermost/config/config.json /config.json.save \
   && rm -rf /mattermost/config/config.json \
   && groupadd -g ${PGID} mattermost \

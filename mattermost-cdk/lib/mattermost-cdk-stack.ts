@@ -1,4 +1,4 @@
-import { Stack, StackProps, CfnOutput, Duration, RemovalPolicy, Size } from 'aws-cdk-lib';
+import { Stack, StackProps, CfnParameter, CfnOutput, Duration, RemovalPolicy, Size, aws_codepipeline_actions } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
@@ -16,16 +16,12 @@ import { SslPolicy } from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import { readFileSync } from 'fs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
+import * as codebuild from 'aws-cdk-lib/aws-codebuild';
+
 
 export interface MattermostStackProps extends StackProps {
   baseNameProp: string
-  envNameProp: string
-  fqdnProp: string
-  zoneNameProp: string
-  hostedZoneIdProp: string
-  imageTag: string
-  sshKeyName: string
-  dbName: string
   numberOfInstances: number
   ecrName: string
   ecrRepoUri: string
@@ -33,6 +29,44 @@ export interface MattermostStackProps extends StackProps {
 export class MattermostStack extends Stack {
   constructor(scope: Construct, id: string, props: MattermostStackProps) {
     super(scope, id, props);
+
+    const fqdn = new CfnParameter(this, 'FQDN', {
+      type: 'String',
+      description: 'Fully Qualified Domain Name (FQDN) for the app',
+      minLength: 5,
+      maxLength: 35,
+      constraintDescription: 'between 5 and 45 characters',
+    })
+
+    const zoneName = new CfnParameter(this, 'ZoneName', {
+      type: 'String',
+      description: 'Zone Name to be used to deploy Mattermost',
+      minLength: 5,
+      maxLength: 35,
+    })
+
+    const zoneId = new CfnParameter(this, 'ZoneIdParameter', {
+      type: 'AWS::Route53::HostedZone::Id',
+      description: 'ZoneId'
+    })
+
+    const sshKeyName = new CfnParameter(this, 'SSHKeyName', {
+      type: 'AWS::EC2::KeyPair::KeyName',
+      description: 'EC2 Key pair name to be used in Bastion Host'
+    })
+
+    const dbName = new CfnParameter(this, 'DBNameParameter', {
+      type: 'String',
+      description: 'Database Name for Postgres (default: mattermostdb)',
+      default: 'mattermostdb'
+    })
+
+    const imageTag = new CfnParameter(this, 'DockerImageTag', {
+      type: 'String',
+      description: 'Image Tag for Docker Image (default: prod)',
+      default: 'prod'
+    })
+
 
     const appBaseName = props.baseNameProp
 
@@ -134,15 +168,17 @@ export class MattermostStack extends Stack {
       securityGroup: bastionHostSG,
       instanceName: 'MattermostBastionHost',
       instanceType: ec2.InstanceType.of(
-        ec2.InstanceClass.T2,
-        ec2.InstanceSize.MICRO,
+        ec2.InstanceClass.BURSTABLE4_GRAVITON,
+        ec2.InstanceSize.SMALL,
       ),
       machineImage: new ec2.AmazonLinuxImage({
         generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2022,
       }),
-      keyName: props.sshKeyName,
+      keyName: sshKeyName.valueAsString,
       userDataCausesReplacement: true,
     });
+
+
 
     // 👇 add the User Data script to the Instance
     const userDataScript = readFileSync('./lib/user-data.sh', 'utf8');
@@ -151,7 +187,7 @@ export class MattermostStack extends Stack {
 
     // Create S3 bucket for RDS exports
 
-    const rdsS3Bucket = new s3.Bucket(this, appBaseName + 'S3Export' + props.envNameProp, {
+    const rdsS3Bucket = new s3.Bucket(this, 'S3Export', {
       removalPolicy: RemovalPolicy.DESTROY,
       publicReadAccess: false,
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -178,7 +214,7 @@ export class MattermostStack extends Stack {
         publiclyAccessible: false,
       },
       cloudwatchLogsRetention: logs.RetentionDays.ONE_WEEK,
-      defaultDatabaseName: props.dbName,
+      defaultDatabaseName: dbName.valueAsString,
       deletionProtection: true,
       iamAuthentication: true,
       instanceIdentifierBase: appBaseName,
@@ -304,7 +340,7 @@ export class MattermostStack extends Stack {
       internetFacing: true,
       securityGroup: LoadbalancerSG,
       http2Enabled: true,
-      ipAddressType: elbv2.IpAddressType.IPV4,
+      ipAddressType: elbv2.IpAddressType.DUAL_STACK,
       vpcSubnets: {
         subnetType: ec2.SubnetType.PUBLIC,
       },
@@ -411,7 +447,7 @@ export class MattermostStack extends Stack {
 
     // Create Container 
     //
-    const tag = props.imageTag
+    const tag = imageTag.valueAsString 
 
     const ecrRegistry = ecr.Repository.fromRepositoryName(this, 'EcrRegistry', props.ecrName)
 
@@ -494,13 +530,13 @@ export class MattermostStack extends Stack {
     // create Certificate
 
     const domainZone = route53.HostedZone.fromHostedZoneAttributes(this, 'HostedZone', {
-      zoneName: props.zoneNameProp,
-      hostedZoneId: props.hostedZoneIdProp
+      zoneName: zoneName.valueAsString,
+      hostedZoneId: zoneId.valueAsString
     })
 
 
     const certificate = new acm.Certificate(this, 'Cert', {
-      domainName: props.fqdnProp,
+      domainName: fqdn.valueAsString,
       validation: acm.CertificateValidation.fromDns(domainZone)
     })
 
@@ -518,11 +554,11 @@ export class MattermostStack extends Stack {
       cluster: EcsCluster,
       capacityProviderStrategies: [capacityProviderStrategy],
       desiredCount: 1,
-      domainName: props.fqdnProp,
+      domainName: fqdn.valueAsString,
       domainZone: domainZone,
       certificate: certificate,
       redirectHTTP: true,
-      sslPolicy: SslPolicy.RECOMMENDED,
+      sslPolicy: SslPolicy.RECOMMENDED_TLS,
       publicLoadBalancer: true,
       healthCheckGracePeriod: Duration.seconds(300),
       memoryLimitMiB: 4096,
@@ -551,6 +587,101 @@ export class MattermostStack extends Stack {
     fileSystem.connections.allowDefaultPortFrom(bastionHostSG, 'Allow EFS Traffic from BastionHost')
 
 
+    // Create Pipeline to deploy updates on new Container Updates
+    // create empty codepipeline
+    const pipeline = new codepipeline.Pipeline(this, 'DeployPipeline');
+
+    // pipeline soureOutput Artifact
+    const sourceOutput = new codepipeline.Artifact();
+    const buildOutput = new codepipeline.Artifact();
+    const sourceAction = new aws_codepipeline_actions.EcrSourceAction({
+      actionName: 'UpdateContainerImage',
+      repository: ecrRegistry,
+      imageTag: tag,
+      output: sourceOutput
+    })
+
+    const updateArtifactBuildProject = new codebuild.PipelineProject(this, 'UpdateArtifact', {
+      buildSpec: codebuild.BuildSpec.fromObject({
+        version: '0.2',
+        phases: {
+          install: {
+            commands: [
+              'echo install jq', 'dnf install jq -y'
+            ],
+          },
+          pre_build: {
+            commands: [
+              'echo Artifact pre adjustment', 'cat imageDetail.json'
+            ]
+          },
+          build: {
+            commands: [
+              'cat imageDetail.json | jq \'\[\{ \"name\":\"mattermost-server\",\"imageUri\"\:\.ImageURI\}\]\' > imagedefinition.json'
+            ]
+          },
+          post_build: {
+            commands: [
+              'echo Artifact post adjustment', 'cat imagedefinition.json'
+            ]
+          },
+        },
+        artifacts: {
+          files: [
+            'imagedefinition.json'
+          ]
+        }
+      }),
+      description: 'Update Container Image Artifact for ECS service Update',
+      environment: {
+        buildImage: codebuild.LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_2_0,
+        computeType: codebuild.ComputeType.SMALL,
+        privileged: true,
+      },
+    })
+
+    const updateArtifactAction = new aws_codepipeline_actions.CodeBuildAction({
+      actionName: props.baseNameProp + 'UpdateArtifact',
+      project: updateArtifactBuildProject,
+      input: sourceOutput,
+      outputs: [buildOutput],
+    });
+
+    // Deploy Stage
+
+    const deployEcsStageAction = new aws_codepipeline_actions.EcsDeployAction({
+      actionName: props.baseNameProp + 'DeployEcs',
+      service: MattermostEcsService.service,
+      imageFile: buildOutput.atPath('imagedefinition.json'),
+      deploymentTimeout: Duration.minutes(60),
+    })
+
+    // put pipeline role into a construct
+    const pipelineRole = pipeline.role;
+    ecrRegistry.grantPull(pipelineRole);
+
+    // pipeline stages
+    pipeline.addStage(
+      {
+        stageName: 'Source',
+        actions: [sourceAction],
+      }
+    );
+
+    pipeline.addStage(
+      {
+        stageName: 'UpdateArtifact',
+        actions: [updateArtifactAction],
+      }
+    );
+
+    pipeline.addStage(
+      {
+        stageName: 'DeployEcs',
+        actions: [deployEcsStageAction]
+      }
+    );
+
     // Outputs
 
     new CfnOutput(this, 'VpcId', {
@@ -559,7 +690,7 @@ export class MattermostStack extends Stack {
     })
 
     new ssm.StringParameter(this, 'SSMVpcId', {
-      parameterName: '/' + appBaseName + '/' + props.envNameProp + '/VpcId',
+      parameterName: '/' + appBaseName + '/VpcId',
       stringValue: vpc.vpcId,
       description: 'VpvId for ' + appBaseName
     })
@@ -570,13 +701,13 @@ export class MattermostStack extends Stack {
     })
 
     new ssm.StringParameter(this, 'SSMEfsId', {
-      parameterName: '/' + appBaseName + '/' + props.envNameProp + '/EFSId',
+      parameterName: '/' + appBaseName + '/EFSId',
       stringValue: fileSystem.fileSystemId
     })
 
     new CfnOutput(this, 'Url', {
       description: 'URL',
-      value: 'https://' + props.fqdnProp
+      value: 'https://' + fqdn.valueAsString
     })
 
     new CfnOutput(this, 'S3BucketName', {
@@ -584,7 +715,7 @@ export class MattermostStack extends Stack {
       value: userdataS3Bucket.bucketName
     })
     new ssm.StringParameter(this, 'SSMS3Bucker', {
-      parameterName: '/' + appBaseName + '/' + props.envNameProp + '/S3BucketName',
+      parameterName: '/' + appBaseName + '/S3BucketName',
       stringValue: userdataS3Bucket.bucketName,
       description: 'S3 BucketName for ' + appBaseName
     })
