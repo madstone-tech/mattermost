@@ -88,13 +88,13 @@ Resources:
       Matcher:
         HttpCode: '200'
       HealthCheckIntervalSeconds: 60
-      HealthCheckPath: /
+      HealthCheckPath: /api/v4/system/ping
       HealthCheckProtocol: HTTP
       HealthCheckTimeoutSeconds: 30
       HealthyThresholdCount: 3
       UnhealthyThresholdCount: 3
       TargetType: ip
-      Port: 8000
+      Port: 8065
       TargetGroupAttributes:
         - Key: deregistration_delay.timeout_seconds
           Value: '300'
