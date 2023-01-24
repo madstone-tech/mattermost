@@ -29,9 +29,19 @@ Resources:
       GroupDescription: "Mattermost SG"
       VpcId: !Ref Vpc
       SecurityGroupIngress:
+        - FromPort: 8065
+          IpProtocol: tcp
+          ToPort: 8065
+          SourceSecurityGroupId:
+            Ref: LoadBalancerSG
         - FromPort: 8000
           IpProtocol: tcp
           ToPort: 8000
+          SourceSecurityGroupId:
+            Ref: LoadBalancerSG
+        - FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
           SourceSecurityGroupId:
             Ref: LoadBalancerSG
 
