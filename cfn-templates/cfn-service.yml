@@ -120,8 +120,8 @@ Resources:
               ReadOnly: false
               SourceVolume: mattermost-client-plugins
           PortMappings:
-            - ContainerPort: 8065
-              HostPort: 8065
+            - ContainerPort: 8000
+              HostPort: 8000
               Protocol: tcp
           LogConfiguration:
             LogDriver: "awslogs"
@@ -163,7 +163,7 @@ Resources:
       PlatformVersion: "1.4.0"
       LoadBalancers:
         - ContainerName: "mattermost-server"
-          ContainerPort: 8065
+          ContainerPort: 8000
           TargetGroupArn: !Ref TargetGroupArn
       NetworkConfiguration:
         AwsvpcConfiguration:
