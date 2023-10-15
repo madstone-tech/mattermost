@@ -1,4 +1,4 @@
-FROM public.ecr.aws/amazonlinux/amazonlinux:latest
+FROM public.ecr.aws/amazonlinux/amazonlinux:2
 
 # Some ENV variables
 ENV PATH="/mattermost/bin:${PATH}"
@@ -34,7 +34,7 @@ ARG edition=enterprise
 ARG PUID=2000
 ARG PGID=2000
 ARG MM_BINARY=
-ARG MM_VERSION=7.7.0
+ARG MM_VERSION=7.10.2
 ARG MM_PACKAGE=https://releases.mattermost.com/${MM_VERSION}}/mattermost-${MM_VERSION}-linux-amd64.tar.gz?src=docker
 
 # Get Mattermost
