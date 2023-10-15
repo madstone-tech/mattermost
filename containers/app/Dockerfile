@@ -34,7 +34,7 @@ ARG edition=enterprise
 ARG PUID=2000
 ARG PGID=2000
 ARG MM_BINARY=
-ARG MM_VERSION=7.10.2
+ARG MM_VERSION=8.1.3
 ARG MM_PACKAGE=https://releases.mattermost.com/${MM_VERSION}}/mattermost-${MM_VERSION}-linux-amd64.tar.gz?src=docker
 
 # Get Mattermost
